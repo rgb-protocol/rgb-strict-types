@@ -21,10 +21,6 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-#[cfg(feature = "vesper")]
-pub mod vesper;
-#[cfg(feature = "vesper")]
-mod translate;
 mod memory;
 
 pub use memory::MemoryLayout;

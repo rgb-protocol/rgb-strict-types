@@ -205,7 +205,7 @@ mod test {
 
         use amplify::confinement;
         use amplify::confinement::{SmallVec, TinyBlob, TinyString};
-        use encoding::{Primitive, StrictDeserialize, StrictSerialize};
+        use encoding::{DefaultBasedStrictDumb, Primitive, StrictDeserialize, StrictSerialize};
 
         use crate::{LibBuilder, SemId, StrictVal, SystemBuilder, Ty};
 
@@ -221,6 +221,7 @@ mod test {
         #[derive(StrictType, StrictEncode, StrictDecode)]
         #[strict_type(lib = "Test")]
         struct Tuple(TinyString, i16, TinyString);
+        impl DefaultBasedStrictDumb for Tuple {}
         #[derive(Default)]
         #[derive(StrictType, StrictEncode, StrictDecode)]
         #[strict_type(lib = "Test")]
@@ -232,6 +233,7 @@ mod test {
             list: SmallVec<u16>,
             tuple: Tuple,
         }
+        impl DefaultBasedStrictDumb for Test {}
         impl StrictSerialize for Test {}
         impl StrictDeserialize for Test {}
 

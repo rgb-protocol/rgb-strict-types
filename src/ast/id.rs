@@ -27,7 +27,7 @@ use std::str::FromStr;
 
 use amplify::{ByteArray, Bytes32, Wrapper};
 use baid64::{Baid64ParseError, DisplayBaid64, FromBaid64Str};
-use encoding::{FieldName, LibName, VariantName};
+use encoding::{DefaultBasedStrictDumb, FieldName, LibName, VariantName};
 use sha2::Digest;
 use strict_encoding::{Sizing, TypeName, Variant, STRICT_TYPES_LIB};
 
@@ -47,6 +47,8 @@ pub struct SemId(
     #[from([u8; 32])]
     Bytes32,
 );
+
+impl DefaultBasedStrictDumb for SemId {}
 
 impl Default for SemId {
     /// Default implementation returns semantic id of a Unit type.

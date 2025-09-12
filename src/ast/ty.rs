@@ -40,7 +40,7 @@ pub trait TypeRef:
     SemCommit + Clone + StrictEncode + StrictDecode + StrictDumb + Eq + Debug + Sized
 {
     fn as_ty(&self) -> Option<&Ty<Self>> { None }
-    fn type_refs(&self) -> Iter<Self> { Iter::from(self) }
+    fn type_refs(&self) -> Iter<'_, Self> { Iter::from(self) }
 
     fn is_compound(&self) -> bool { false }
     fn is_byte(&self) -> bool { false }

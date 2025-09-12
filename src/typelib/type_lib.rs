@@ -56,13 +56,17 @@ impl ExternRef {
     pub fn with(lib_id: TypeLibId, sem_id: SemId) -> ExternRef { ExternRef { lib_id, sem_id } }
 }
 
+impl StrictDumb for Box<Ty<InlineRef1>> {
+    fn strict_dumb() -> Self { Box::new(Ty::UNIT) }
+}
+
 #[derive(Clone, Eq, PartialEq, Debug, From)]
 #[derive(StrictDumb, StrictType, StrictEncode, StrictDecode)]
-#[strict_type(lib = STRICT_TYPES_LIB, tags = order, dumb = { InlineRef::Inline(Ty::strict_dumb()) })]
+#[strict_type(lib = STRICT_TYPES_LIB, tags = order, dumb = { InlineRef::Inline(Box::new(Ty::strict_dumb())) })]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize), serde(rename_all = "camelCase"))]
 pub enum InlineRef {
     #[from]
-    Inline(Ty<InlineRef1>),
+    Inline(Box<Ty<InlineRef1>>),
     Named(SemId),
     Extern(ExternRef),
 }
@@ -164,13 +168,16 @@ impl Display for InlineRef2 {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Debug, From)]
+impl StrictDumb for Box<Ty<InlineRef>> {
+    fn strict_dumb() -> Self { Box::new(Ty::UNIT) }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug)]
 #[derive(StrictDumb, StrictType, StrictEncode, StrictDecode)]
-#[strict_type(lib = STRICT_TYPES_LIB, tags = order, dumb = { LibRef::Inline(Ty::strict_dumb()) })]
+#[strict_type(lib = STRICT_TYPES_LIB, tags = order, dumb = { LibRef::Inline(Box::new(Ty::strict_dumb())) })]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize), serde(rename_all = "camelCase"))]
 pub enum LibRef {
-    #[from]
-    Inline(Ty<InlineRef>),
+    Inline(Box<Ty<InlineRef>>),
     Named(SemId),
     Extern(ExternRef),
 }

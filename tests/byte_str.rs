@@ -29,8 +29,8 @@ use strict_types::LibBuilder;
 
 #[test]
 fn reflect() {
-    #[derive(Clone, Debug, Default)]
-    #[derive(StrictType, StrictEncode, StrictDecode)]
+    #[derive(Clone, Debug)]
+    #[derive(StrictType, StrictEncode, StrictDecode, StrictDumb)]
     #[strict_type(lib = "Test")]
     struct ByteStr(SmallVec<u8>);
 

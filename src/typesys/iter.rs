@@ -77,13 +77,6 @@ where 'tree: 'sys
     fn into_iter(self) -> Self::IntoIter { self.iter() }
 }
 
-#[cfg(feature = "vesper")]
-impl std::fmt::Display for TypeTree<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.to_layout(), f)
-    }
-}
-
 #[derive(Clone, Eq, PartialEq, Debug)]
 #[derive(StrictType, StrictDumb, StrictEncode, StrictDecode)]
 #[strict_type(lib = STRICT_TYPES_LIB, tags = custom)]

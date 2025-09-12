@@ -24,8 +24,6 @@
 use amplify::confinement::LargeVec;
 use strict_encoding::STRICT_TYPES_LIB;
 
-#[cfg(feature = "vesper")]
-use super::vesper::TypeVesper;
 use crate::typesys::{TypeInfo, TypeTree};
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -51,50 +49,6 @@ impl<'a> From<&'a TypeTree<'_>> for MemoryLayout {
     }
 }
 
-#[cfg(feature = "vesper")]
-impl std::fmt::Display for MemoryLayout {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.to_vesper().display(), f)
-    }
-}
-
 impl MemoryLayout {
     fn new() -> Self { Self { items: empty!() } }
-
-    #[cfg(feature = "vesper")]
-    pub fn to_vesper(&self) -> TypeVesper {
-        let mut root = None;
-        let mut path: Vec<usize> = vec![];
-        for item in &self.items {
-            let expr = item.to_vesper();
-            let depth = item.depth;
-
-            if path.is_empty() && depth == 0 {
-                debug_assert_eq!(root, None);
-                root = Some(expr);
-                continue;
-            }
-
-            debug_assert!(depth > 0);
-            // if the stack top is the same depth or deeper:
-            // - remove everything down from the depth
-            // - take the remaining top and add the item as a new child
-            // - create new item and push it to stack
-            if path.len() >= depth as usize {
-                let _ = path.split_off(depth as usize - 1);
-            }
-            // if the stack top is one level up
-            // - create new item and add it as a child to the stack top item
-            // - push the newly created item to stack
-            let mut head = root.as_mut().expect("already set");
-            for el in &path {
-                head = head.content.get_mut(*el).expect("algorithm inconsistency");
-            }
-            path.push(head.content.len());
-            head.content
-                .push(Box::new(expr))
-                .expect("invalid type layout containing too much items");
-        }
-        root.expect("invalid type layout with zero items")
-    }
 }

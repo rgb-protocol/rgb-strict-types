@@ -72,7 +72,7 @@ pub struct Iter<'ty, Ref: TypeRef> {
 }
 
 impl<Ref: TypeRef> Ty<Ref> {
-    pub fn type_refs(&self) -> Iter<Ref> { Iter::from(self) }
+    pub fn type_refs(&self) -> Iter<'_, Ref> { Iter::from(self) }
 }
 
 impl<Ref: TypeRef> Ty<Ref> {

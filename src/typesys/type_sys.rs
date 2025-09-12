@@ -30,7 +30,9 @@ use std::ops::Index;
 
 use amplify::confinement::{self, Confined, MediumOrdMap};
 use amplify::num::u24;
-use encoding::{LibName, Sizing, StrictDeserialize, StrictSerialize, TypeName};
+use encoding::{
+    DefaultBasedStrictDumb, LibName, Sizing, StrictDeserialize, StrictSerialize, TypeName,
+};
 use strict_encoding::STRICT_TYPES_LIB;
 
 use crate::ast::UnnamedFields;
@@ -116,6 +118,7 @@ impl SymTy {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TypeSystem(MediumOrdMap<SemId, Ty<SemId>>);
 
+impl DefaultBasedStrictDumb for TypeSystem {}
 impl StrictSerialize for TypeSystem {}
 impl StrictDeserialize for TypeSystem {}
 

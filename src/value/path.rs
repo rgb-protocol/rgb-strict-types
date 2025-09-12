@@ -26,7 +26,7 @@
 use std::fmt::{self, Display, Formatter};
 
 use amplify::confinement::{SmallVec, TinyBlob, TinyString};
-use encoding::{FieldName, STRICT_TYPES_LIB};
+use encoding::{DefaultBasedStrictDumb, FieldName, STRICT_TYPES_LIB};
 
 use crate::value::{EnumTag, StrictNum};
 use crate::StrictVal;
@@ -118,12 +118,14 @@ pub enum Step {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize), serde(transparent))]
 pub struct Path(SmallVec<Step>);
 
+impl DefaultBasedStrictDumb for Path {}
+
 impl Path {
     pub fn new() -> Path { Path::default() }
 
     pub fn with(step: Step) -> Path { Path(small_vec!(step)) }
 
-    pub fn iter(&self) -> std::slice::Iter<Step> { self.0.iter() }
+    pub fn iter(&self) -> std::slice::Iter<'_, Step> { self.0.iter() }
 }
 
 impl<'path> IntoIterator for &'path Path {

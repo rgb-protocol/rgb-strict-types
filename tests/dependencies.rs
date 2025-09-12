@@ -30,8 +30,8 @@ use std::io;
 
 use strict_encoding::stl::{AlphaLodash, Bool};
 use strict_encoding::{
-    DecodeError, Ident, StrictDecode, StrictDumb, StrictEncode, StrictType, TypedRead, TypedWrite,
-    LIB_NAME_STD, STRICT_TYPES_LIB,
+    DecodeError, DefaultBasedStrictDumb, Ident, StrictDecode, StrictDumb, StrictEncode, StrictType,
+    TypedRead, TypedWrite, LIB_NAME_STD, STRICT_TYPES_LIB,
 };
 use strict_types::stl::{std_stl, strict_types_stl};
 use strict_types::{CompileError, LibBuilder, SystemBuilder, TranspileError, TypeLib};
@@ -40,6 +40,7 @@ const LIB: &str = "Test";
 
 #[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Default)]
 pub struct Void;
+impl DefaultBasedStrictDumb for Void {}
 
 impl StrictType for Void {
     const STRICT_LIB_NAME: &'static str = LIB;
@@ -60,6 +61,7 @@ pub enum Prim {
     A = 1,
     B = 2,
 }
+impl DefaultBasedStrictDumb for Prim {}
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 #[derive(StrictType, StrictEncode, StrictDecode)]
@@ -70,6 +72,7 @@ pub enum Message {
     Pong { len: u8, nonce: Void },
     Connect { host: Option<u8>, port: u16 },
 }
+impl DefaultBasedStrictDumb for Message {}
 
 impl Default for Message {
     fn default() -> Self {
@@ -80,21 +83,21 @@ impl Default for Message {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Debug, Default)]
-#[derive(StrictType, StrictEncode, StrictDecode)]
+#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(StrictType, StrictEncode, StrictDecode, StrictDumb)]
 #[strict_type(lib = LIB)]
 pub struct TypeA(u8, u16);
 
-#[derive(Clone, Eq, PartialEq, Debug, Default)]
-#[derive(StrictType, StrictEncode, StrictDecode)]
+#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(StrictType, StrictEncode, StrictDecode, StrictDumb)]
 #[strict_type(lib = LIB)]
 pub struct TypeB {
     pub one: TypeA,
     pub two: TypeA,
 }
 
-#[derive(Clone, Eq, PartialEq, Debug, Default)]
-#[derive(StrictType, StrictEncode, StrictDecode)]
+#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(StrictType, StrictEncode, StrictDecode, StrictDumb)]
 #[strict_type(lib = LIB)]
 pub struct Complex {
     pub a: TypeA,
@@ -119,13 +122,13 @@ fn serialize() {
 
 #[test]
 fn dependency_misses_type() {
-    #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Default)]
-    #[derive(StrictType, StrictEncode, StrictDecode)]
+    #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+    #[derive(StrictType, StrictEncode, StrictDecode, StrictDumb)]
     #[strict_type(lib = LIB_NAME_STD)]
     struct Fake(());
 
-    #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Default)]
-    #[derive(StrictType, StrictEncode, StrictDecode)]
+    #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+    #[derive(StrictType, StrictEncode, StrictDecode, StrictDumb)]
     #[strict_type(lib = LIB)]
     struct FakeUser(Fake);
 

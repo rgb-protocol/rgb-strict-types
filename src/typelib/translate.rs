@@ -104,7 +104,7 @@ impl Translate<TranspileRef> for LibRef {
         ctx: &Self::Context,
     ) -> Result<TranspileRef, Self::Error> {
         match self {
-            LibRef::Inline(ty) => ctx.embedded(builder, ty),
+            LibRef::Inline(ty) => ctx.embedded(builder, *ty),
             LibRef::Named(id) => ctx.named(id),
             LibRef::Extern(ext) => ctx.external(builder, ext),
         }
@@ -122,7 +122,7 @@ impl Translate<TranspileRef> for InlineRef {
         ctx: &Self::Context,
     ) -> Result<TranspileRef, Self::Error> {
         match self {
-            InlineRef::Inline(ty) => ctx.embedded(builder, ty),
+            InlineRef::Inline(ty) => ctx.embedded(builder, *ty),
             InlineRef::Named(id) => ctx.named(id),
             InlineRef::Extern(ext) => ctx.external(builder, ext),
         }

@@ -108,7 +108,7 @@ impl Translate<LibRef> for TranspileRef {
         match self {
             TranspileRef::Embedded(ty) => {
                 builder.stack.push(ty.cls().to_string());
-                let res = ty.translate(builder, ctx).map(LibRef::Inline);
+                let res = ty.translate(builder, ctx).map(|ty| LibRef::Inline(Box::new(ty)));
                 builder.stack.pop();
                 res
             }
@@ -134,7 +134,7 @@ impl Translate<InlineRef> for TranspileRef {
         match self {
             TranspileRef::Embedded(ty) => {
                 builder.stack.push(ty.cls().to_string());
-                let res = ty.translate(builder, ctx).map(InlineRef::Inline);
+                let res = ty.translate(builder, ctx).map(|ty| InlineRef::Inline(Box::new(ty)));
                 builder.stack.pop();
                 res
             }

@@ -74,6 +74,5 @@ fn symbols() {
 #[test]
 fn type_tree() {
     let sys = sys();
-    let tt = sys.type_tree("StrictTypes.TypeLib").unwrap();
-    let _ = tt.to_string();
+    let _tt = sys.type_tree("StrictTypes.TypeLib").unwrap();
 }

@@ -164,7 +164,7 @@ impl Translate<SemId> for LibRef {
     ) -> Result<SemId, Self::Error> {
         match self {
             LibRef::Named(sem_id) => Ok(sem_id),
-            LibRef::Inline(inline_ty) => builder.translate_inline(inline_ty),
+            LibRef::Inline(inline_ty) => builder.translate_inline(*inline_ty),
             LibRef::Extern(ExternRef { sem_id, .. }) => Ok(sem_id),
         }
     }
@@ -182,7 +182,7 @@ impl Translate<SemId> for InlineRef {
     ) -> Result<SemId, Self::Error> {
         match self {
             InlineRef::Named(sem_id) => Ok(sem_id),
-            InlineRef::Inline(inline_ty) => builder.translate_inline(inline_ty),
+            InlineRef::Inline(inline_ty) => builder.translate_inline(*inline_ty),
             InlineRef::Extern(ExternRef { sem_id, .. }) => Ok(sem_id),
         }
     }

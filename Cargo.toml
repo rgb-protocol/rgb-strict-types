@@ -1,11 +1,11 @@
 [package]
 name = "rgb-strict-types"
 description = "Strict types: confined generalized algebraic data types (GADT)"
-version = "2.8.3"
+version = "1.0.0"
 authors = ["Zoe Faltibà <zoefaltiba@gmail.com>"]
 repository = "https://github.com/rgb-protocol/rgb-strict-types"
 license = "Apache-2.0"
-keywords = ["encoding", "strict-encoding", "aluvm", "ubideco", "gadt"]
+keywords = ["encoding", "rgb-strict-encoding", "gadt"]
 categories = ["compilers", "parser-implementations", "mathematics", "science", "data-structures"]
 edition = "2021"
 rust-version = "1.82.0"
@@ -72,7 +72,3 @@ serde = [
 [package.metadata.docs.rs]
 all-features = true
 rustc-args = ["--cfg", "docsrs"]
-
-[patch.crates-io]
-rgb-strict-encoding = { git = "http://github.com/rgb-protocol/rgb-strict-encoding", branch = "master"}
-rgb-ascii-armor = { git = "http://github.com/rgb-protocol/rgb-ascii-armor", branch = "master"}

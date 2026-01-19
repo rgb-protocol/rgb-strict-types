@@ -72,3 +72,7 @@ serde = [
 [package.metadata.docs.rs]
 all-features = true
 rustc-args = ["--cfg", "docsrs"]
+
+[patch.crates-io]
+rgb-strict-encoding = { git = "https://github.com/rgb-protocol/rgb-strict-encoding", branch = "master" }
+rgb-ascii-armor = { git = "https://github.com/rgb-protocol/rgb-ascii-armor", branch = "master" }

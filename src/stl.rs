@@ -22,8 +22,8 @@
 // the License.
 
 use encoding::bitcoin_types::{
-    CompressedPublicKey, LeafScript, LeafVersion, OutPoint, ScriptBuf, ScriptBytes, TapNodeHash,
-    Transaction, TweakedPublicKey, TxIn, TxOut, Txid, XOnlyPublicKey,
+    ChainHash, CompressedPublicKey, LeafScript, LeafVersion, OutPoint, ScriptBuf, ScriptBytes,
+    TapNodeHash, Transaction, TweakedPublicKey, TxIn, TxOut, Txid, XOnlyPublicKey,
 };
 use encoding::stl::{
     Alpha, AlphaCaps, AlphaCapsDash, AlphaCapsDot, AlphaCapsLodash, AlphaCapsNum, AlphaDash,
@@ -46,7 +46,7 @@ pub const LIB_ID_STD: &str =
 pub const LIB_ID_STRICT_TYPES: &str =
     "stl:6Z6S5ztA-l3_RfoW-uOIW~K0-04t7R_3-KIiByhE-1W4rPFA#henry-heart-survive";
 pub const LIB_ID_BITCOIN: &str =
-    "stl:x84tWPaG-KhMKAJm-_4wwMRK-hMLiHxT-YzwLHrW-zkyRBso#strong-samba-analyze";
+    "stl:5beZGNHZ-2bZ5duq-VkB5z1E-QmrHovl-Elx0Y~n-uDyOtwI#nice-philips-genius";
 pub const LIB_ID_BITCOIN_TX: &str =
     "stl:9WwTYiP2-OadKCZP-cR0bJ_Y-qruINYX-bXZFj8Y-fsQoGgo#signal-color-cipher";
 
@@ -124,6 +124,7 @@ pub fn bitcoin_stl() -> TypeLib {
         .transpile::<TxOut>()
         .transpile::<Txid>()
         .transpile::<XOnlyPublicKey>()
+        .transpile::<ChainHash>()
         .compile()
         .unwrap()
 }

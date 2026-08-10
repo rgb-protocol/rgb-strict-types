@@ -124,7 +124,7 @@ impl SystemBuilder {
 
         for (sem_id, info) in &self.types {
             for (inner_id, _) in info.ty.type_refs() {
-                if !self.types.contains_key(sem_id) {
+                if !self.types.contains_key(inner_id) {
                     errors.push(Error::InnerTypeAbsent {
                         unknown: *inner_id,
                         known: *sem_id,

@@ -34,7 +34,10 @@ use strict_encoding::{
     TypedRead, TypedWrite, LIB_NAME_STD, STRICT_TYPES_LIB,
 };
 use strict_types::stl::{std_stl, strict_types_stl};
-use strict_types::{CompileError, LibBuilder, SystemBuilder, TranspileError, TypeLib};
+use strict_types::typesys::Error;
+use strict_types::{
+    CompileError, LibBuilder, LibRef, SemId, SystemBuilder, TranspileError, Ty, TypeLib,
+};
 
 const LIB: &str = "Test";
 
@@ -268,4 +271,31 @@ fn type_lib_semid_inconsistency() {
     assert_ne!(alphanumlodash_semid_orig, alphanumlodash_semid_mod);
     // Ident sem IDs from the 2 SymbolicSys unexpectedly match
     assert_ne!(ident_semid_orig, ident_semid_mod); // fails
+}
+
+/// A library may refer to a type by semantic id alone, and [`LibRef::Named`] translates to
+/// that id verbatim, without ever being looked up. [`SystemBuilder::finalize`] is therefore
+/// the only thing standing between such a reference and a type system missing the type it
+/// points at.
+#[test]
+fn inner_type_absent() {
+    let absent = SemId::from([0xADu8; 32]);
+    let mut lib = std_stl();
+    lib.types
+        .insert(
+            tn!("Dangling"),
+            Ty::Struct(fields! { "nothingDefinesThis" => LibRef::Named(absent) }),
+        )
+        .unwrap();
+
+    let res = SystemBuilder::new().import(lib).unwrap().finalize();
+    let Err(errors) = res else {
+        panic!("a library referring to a type nothing defines must not build a system");
+    };
+    assert!(
+        errors
+            .iter()
+            .any(|e| matches!(e, Error::InnerTypeAbsent { unknown, .. } if *unknown == absent)),
+        "unexpected errors: {errors:?}"
+    );
 }

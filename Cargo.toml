@@ -1,7 +1,7 @@
 [package]
 name = "rgb-strict-types"
 description = "Strict types: confined generalized algebraic data types (GADT)"
-version = "1.0.3"
+version = "1.0.4"
 authors = ["Zoe Faltibà <zoefaltiba@gmail.com>"]
 repository = "https://github.com/rgb-protocol/rgb-strict-types"
 license = "Apache-2.0"
@@ -28,9 +28,9 @@ required-features = ["stl"]
 
 [dependencies]
 amplify = "=4.8.1"
-rgb-ascii-armor = { version = "1.0.3", optional = true }
+rgb-ascii-armor = { version = "1.0.4", optional = true }
 baid64 = "=0.4.1"
-rgb-strict-encoding = { version = "~1.0.3", features = [
+rgb-strict-encoding = { version = "~1.0.4", features = [
     "bitcoin",
 ] }
 indexmap = "2.14.0"

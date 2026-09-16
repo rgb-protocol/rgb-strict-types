@@ -552,9 +552,9 @@ dependencies = [
 
 [[package]]
 name = "rgb-ascii-armor"
-version = "1.0.2"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcde5a129540e5911c24930fd854ea658a715b50a690d254273088f907a63516"
+checksum = "e1c54d31da1d8d5b1c6e520107148593a1b332d35bfc2176c821ac7b176c5f22"
 dependencies = [
  "amplify",
  "baid64",
@@ -565,8 +565,9 @@ dependencies = [
 
 [[package]]
 name = "rgb-strict-encoding"
-version = "1.0.2"
-source = "git+https://github.com/rgb-protocol/rgb-strict-encoding?rev=7feb0f2#7feb0f2986a49cf3fa084e7030c8aa162356779d"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c115ea3cd8818f66c3cf097c81f2315c6c5677a262c5ca998840dd29b98b826"
 dependencies = [
  "amplify",
  "bitcoin",
@@ -577,8 +578,9 @@ dependencies = [
 
 [[package]]
 name = "rgb-strict-encoding-derive"
-version = "1.0.2"
-source = "git+https://github.com/rgb-protocol/rgb-strict-encoding?rev=7feb0f2#7feb0f2986a49cf3fa084e7030c8aa162356779d"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "895212c63cb72f1b2c1bdbf82047ad9357cbebd3ba31d1456f80d854063c0ef1"
 dependencies = [
  "amplify_syn",
  "heck",
@@ -589,7 +591,7 @@ dependencies = [
 
 [[package]]
 name = "rgb-strict-types"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "amplify",
  "baid64",

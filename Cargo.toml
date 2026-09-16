@@ -9,7 +9,6 @@ keywords = ["encoding", "rgb-strict-encoding", "gadt"]
 categories = ["compilers", "parser-implementations", "mathematics", "science", "data-structures"]
 edition = "2021"
 rust-version = "1.85.0"
-readme = "README.md"
 exclude = [".github"]
 
 [lib]

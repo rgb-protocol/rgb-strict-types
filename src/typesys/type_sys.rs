@@ -164,11 +164,11 @@ impl TypeSystem {
         fields: &UnnamedFields<SemId>,
     ) -> Result<Option<(SemId, Sizing)>, UnknownType> {
         let rest = fields[1];
-        let rest = self.find(rest).ok_or(UnknownType(rest))?;
+        let rest = self.get(rest).ok_or(UnknownType(rest))?;
         if let Ty::List(rest, sizing) = rest {
             let mut sizing = *sizing;
-            sizing.min += 1;
-            sizing.max += 1;
+            sizing.min = sizing.min.saturating_add(1);
+            sizing.max = sizing.max.saturating_add(1);
             return Ok(Some((*rest, sizing)));
         }
         Ok(None)
@@ -183,8 +183,8 @@ impl TypeSystem {
             return Ok(false);
         };
 
-        Ok(self.find(first).ok_or(UnknownType(first))?.is_char_enum()
-            && self.find(rest).ok_or(UnknownType(rest))?.is_char_enum())
+        Ok(self.get(first).ok_or(UnknownType(first))?.is_char_enum()
+            && self.get(rest).ok_or(UnknownType(rest))?.is_char_enum())
     }
 }
 

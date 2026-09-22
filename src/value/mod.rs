@@ -44,6 +44,8 @@ pub use val::{Blob, EnumTag, StrictNum, StrictVal};
 
 #[cfg(test)]
 mod test_helpers {
+    use std::collections::{BTreeMap, BTreeSet};
+
     use amplify::confinement::{Confined, NonEmptyString};
     use encoding::{Ident, StrictDeserialize, StrictSerialize};
 
@@ -84,12 +86,40 @@ mod test_helpers {
         }
     }
 
+    /// Sized collections of every kind, each declared with 1..=3 items (`text` with 1..=4 bytes).
+    #[derive(Clone, Eq, PartialEq, Hash, Debug)]
+    #[derive(StrictDumb, StrictType, StrictEncode, StrictDecode)]
+    #[strict_type(lib = "TestLib", dumb = { Bounded::with(&[1], &[1], &[(1, 1)], &[1], "a") })]
+    pub struct Bounded {
+        pub list: Confined<Vec<u16>, 1, 3>,
+        pub set: Confined<BTreeSet<u8>, 1, 3>,
+        pub map: Confined<BTreeMap<u8, u8>, 1, 3>,
+        pub blob: Confined<Vec<u8>, 1, 3>,
+        pub text: Confined<String, 1, 4>,
+    }
+
+    impl StrictSerialize for Bounded {}
+    impl StrictDeserialize for Bounded {}
+
+    impl Bounded {
+        pub fn with(list: &[u16], set: &[u8], map: &[(u8, u8)], blob: &[u8], text: &str) -> Self {
+            Bounded {
+                list: Confined::try_from(list.to_vec()).unwrap(),
+                set: Confined::try_from(set.iter().copied().collect::<BTreeSet<_>>()).unwrap(),
+                map: Confined::try_from(map.iter().copied().collect::<BTreeMap<_, _>>()).unwrap(),
+                blob: Confined::try_from(blob.to_vec()).unwrap(),
+                text: Confined::try_from(text.to_owned()).unwrap(),
+            }
+        }
+    }
+
     pub fn test_system() -> SymbolicSys {
         let std = std_stl();
         let st = strict_types_stl();
         let lib =
             LibBuilder::with("TestLib", [std.to_dependency_types(), st.to_dependency_types()])
                 .transpile::<Nominal>()
+                .transpile::<Bounded>()
                 .compile()
                 .unwrap();
         SystemBuilder::new()

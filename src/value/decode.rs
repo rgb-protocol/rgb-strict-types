@@ -387,17 +387,133 @@ impl TypeSystem {
             }
         };
 
+        self.check_declared(ty, &val, &spec)?;
+
         Ok(TypedVal {
             val,
             orig: TypeSymbol::unnamed(sem_id),
         })
     }
+
+    /// Enforces the declared sizing and character sets of a decoded value, which the decoding
+    /// itself uses only to select the length prefix width.
+    fn check_declared(
+        &self,
+        ty: &Ty<SemId>,
+        val: &StrictVal,
+        spec: &TypeSpec,
+    ) -> Result<(), Error> {
+        let (sizing, charset) = match ty {
+            Ty::Tuple(fields) if self.is_rstring(fields)? => {
+                let (rest, sizing) = self.rstring_sizing(fields)?.expect("checked by is_rstring");
+                (sizing, Some((fields[0], rest)))
+            }
+            Ty::List(el, sizing)
+                if self
+                    .get(*el)
+                    .ok_or_else(|| Error::TypeAbsent(TypeSpec::from(*el)))?
+                    .is_char_enum() =>
+            {
+                (*sizing, Some((*el, *el)))
+            }
+            Ty::List(_, sizing) | Ty::Set(_, sizing) | Ty::Map(_, _, sizing) => (*sizing, None),
+            Ty::Primitive(_)
+            | Ty::Enum(_)
+            | Ty::Union(_)
+            | Ty::Array(_, _)
+            | Ty::Struct(_)
+            | Ty::UnicodeChar
+            | Ty::Tuple(_) => return Ok(()),
+        };
+
+        let len = match val {
+            StrictVal::String(s) => s.len(),
+            StrictVal::Bytes(b) => b.len(),
+            StrictVal::List(items) | StrictVal::Set(items) => items.len(),
+            StrictVal::Map(items) => items.len(),
+            // sized types always decode into collections: fail closed should this ever change
+            _ => {
+                return Err(DecodeError::DataIntegrityError(format!(
+                    "value of type {spec} did not decode into a collection"
+                ))
+                .into())
+            }
+        };
+        if !sizing.check(len) {
+            return Err(DecodeError::DataIntegrityError(format!(
+                "value of type {spec} has length {len}, while the type requires {}..={}",
+                sizing.min, sizing.max
+            ))
+            .into());
+        }
+
+        if let (Some((first, rest)), StrictVal::String(s)) = (charset, val) {
+            let (first_set, rest_set) = (self.char_set(first)?, self.char_set(rest)?);
+            for (pos, ch) in s.bytes().enumerate() {
+                let set = if pos == 0 { first_set } else { rest_set };
+                if !set.contains(ch) {
+                    return Err(DecodeError::DataIntegrityError(format!(
+                        "value of type {spec} has disallowed character {:?} at position {pos}",
+                        ch as char
+                    ))
+                    .into());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Returns the characters allowed by a character enum type.
+    fn char_set(&self, sem_id: SemId) -> Result<AsciiSet, Error> {
+        let spec = TypeSpec::from(sem_id);
+        match self.get(sem_id).ok_or_else(|| Error::TypeAbsent(spec.clone()))? {
+            Ty::Enum(variants) if variants.iter().all(|v| v.tag < 128) => {
+                let mut set = AsciiSet::default();
+                variants.iter().for_each(|v| set.insert(v.tag));
+                Ok(set)
+            }
+            _ => {
+                Err(DecodeError::DataIntegrityError(format!("type {spec} is not a character enum"))
+                    .into())
+            }
+        }
+    }
+}
+
+/// Set of ASCII characters, stored as a bit mask with one bit per character code.
+#[derive(Copy, Clone, Default)]
+struct AsciiSet(u128);
+
+impl AsciiSet {
+    fn insert(&mut self, ch: u8) {
+        debug_assert!(ch < 128, "non-ASCII character {ch}");
+        self.0 |= 1u128 << ch;
+    }
+
+    /// Non-ASCII bytes are never contained; the check also keeps the shift within `u128`.
+    fn contains(self, ch: u8) -> bool { ch < 128 && self.0 & (1u128 << ch) != 0 }
 }
 
 #[cfg(test)]
 mod test {
+    use amplify::confinement::Confined;
+
     use super::super::test_helpers::*;
-    // use super::*;
+    use super::{DecodeError, Error};
+
+    /// Asserts that deserialization was rejected and the error contains the given fragment.
+    #[track_caller]
+    fn assert_rejected<T: core::fmt::Debug>(res: Result<T, Error>, fragment: &str) {
+        match res {
+            Err(Error::Decode(DecodeError::DataIntegrityError(msg))) => assert!(
+                msg.contains(fragment),
+                "wrong data-integrity message\n  expected to contain: {fragment:?}\n  got: {msg:?}"
+            ),
+            other => {
+                panic!("expected a data-integrity error containing {fragment:?}, got {other:?}")
+            }
+        }
+    }
 
     #[test]
     fn typify() {
@@ -409,5 +525,144 @@ mod test {
             format!("{}", checked.val),
             r#"name "Some name", ticker "TICK", precision twoDecimals"#
         );
+    }
+
+    /// Strict encoding of `Nominal`: ticker and name are each prefixed with a u8 length.
+    fn nominal(ticker: &[u8], name: &[u8]) -> Vec<u8> {
+        let mut data = vec![ticker.len() as u8];
+        data.extend_from_slice(ticker);
+        data.push(name.len() as u8);
+        data.extend_from_slice(name);
+        data.push(2);
+        data
+    }
+
+    #[test]
+    fn deserialize_canonical() {
+        use encoding::StrictSerialize;
+
+        let data = Nominal::with("TICK", "Some name", 2).to_strict_serialized::<0xFF>().unwrap();
+        assert_eq!(data.as_slice(), nominal(b"TICK", b"Some name").as_slice());
+        test_system().strict_deserialize_type("TestLib.Nominal", &data).unwrap();
+    }
+
+    #[test]
+    fn deserialize_rejects_out_of_sizing() {
+        let sys = test_system();
+        // name is a NonEmptyString<32>
+        assert_rejected(
+            sys.strict_deserialize_type("TestLib.Nominal", &nominal(b"TICK", b"")),
+            "has length 0, while the type requires 1..=32",
+        );
+        assert_rejected(
+            sys.strict_deserialize_type("TestLib.Nominal", &nominal(b"TICK", &[b'a'; 33])),
+            "has length 33, while the type requires 1..=32",
+        );
+        sys.strict_deserialize_type("TestLib.Nominal", &nominal(b"TICK", &[b'a'; 32])).unwrap();
+        // ticker is an RString of 1..=100 characters
+        assert_rejected(
+            sys.strict_deserialize_type("TestLib.Nominal", &nominal(b"", b"name")),
+            "has length 0, while the type requires 1..=100",
+        );
+        assert_rejected(
+            sys.strict_deserialize_type("TestLib.Nominal", &nominal(&[b'A'; 101], b"name")),
+            "has length 101, while the type requires 1..=100",
+        );
+        sys.strict_deserialize_type("TestLib.Nominal", &nominal(&[b'A'; 100], b"name")).unwrap();
+    }
+
+    #[test]
+    fn deserialize_rejects_out_of_charset() {
+        let sys = test_system();
+        // ticker is an RString<AlphaLodash, AlphaNumLodash, ..>
+        assert_rejected(
+            sys.strict_deserialize_type("TestLib.Nominal", &nominal(b"1ICK", b"name")),
+            "has disallowed character '1' at position 0",
+        );
+        assert_rejected(
+            sys.strict_deserialize_type("TestLib.Nominal", &nominal(b"T@CK", b"name")),
+            "has disallowed character '@' at position 1",
+        );
+        sys.strict_deserialize_type("TestLib.Nominal", &nominal(b"T1CK", b"name")).unwrap();
+    }
+
+    /// Strict encoding of `Bounded`: every field is prefixed with a u8 length.
+    fn bounded(list: &[u16], set: &[u8], map: &[(u8, u8)], blob: &[u8], text: &[u8]) -> Vec<u8> {
+        let mut data = vec![list.len() as u8];
+        list.iter().for_each(|item| data.extend_from_slice(&item.to_le_bytes()));
+        data.push(set.len() as u8);
+        data.extend_from_slice(set);
+        data.push(map.len() as u8);
+        map.iter().for_each(|(key, val)| data.extend_from_slice(&[*key, *val]));
+        data.push(blob.len() as u8);
+        data.extend_from_slice(blob);
+        data.push(text.len() as u8);
+        data.extend_from_slice(text);
+        data
+    }
+
+    #[test]
+    fn deserialize_bounded_canonical() {
+        use encoding::StrictSerialize;
+
+        let map = [(1, 1), (2, 2), (3, 3)];
+        let value = Bounded::with(&[1, 2, 3], &[1, 2, 3], &map, &[1, 2, 3], "ab");
+        let data = value.to_strict_serialized::<0xFF>().unwrap();
+        let expected = bounded(&[1, 2, 3], &[1, 2, 3], &map, &[1, 2, 3], b"ab");
+        assert_eq!(data.as_slice(), expected.as_slice());
+        test_system().strict_deserialize_type("TestLib.Bounded", &data).unwrap();
+    }
+
+    #[test]
+    fn deserialize_rejects_out_of_sizing_collections() {
+        let sys = test_system();
+        let check = |data: Vec<u8>| sys.strict_deserialize_type("TestLib.Bounded", &data);
+        let (list, set, map, blob) = (&[1u16][..], &[1u8][..], &[(1u8, 1u8)][..], &[1u8][..]);
+
+        let too_short = "has length 0, while the type requires 1..=3";
+        let too_long = "has length 4, while the type requires 1..=3";
+        // list
+        assert_rejected(check(bounded(&[], set, map, blob, b"a")), too_short);
+        assert_rejected(check(bounded(&[1, 2, 3, 4], set, map, blob, b"a")), too_long);
+        // set
+        assert_rejected(check(bounded(list, &[], map, blob, b"a")), too_short);
+        assert_rejected(check(bounded(list, &[1, 2, 3, 4], map, blob, b"a")), too_long);
+        // map
+        assert_rejected(check(bounded(list, set, &[], blob, b"a")), too_short);
+        assert_rejected(
+            check(bounded(list, set, &[(1, 1), (2, 2), (3, 3), (4, 4)], blob, b"a")),
+            too_long,
+        );
+        // byte string
+        assert_rejected(check(bounded(list, set, map, &[], b"a")), too_short);
+        assert_rejected(check(bounded(list, set, map, &[1, 2, 3, 4], b"a")), too_long);
+        // unicode string
+        assert_rejected(
+            check(bounded(list, set, map, blob, b"")),
+            "has length 0, while the type requires 1..=4",
+        );
+        assert_rejected(
+            check(bounded(list, set, map, blob, b"abcde")),
+            "has length 5, while the type requires 1..=4",
+        );
+
+        check(bounded(list, set, map, blob, b"a")).unwrap();
+        let map3 = [(1, 1), (2, 2), (3, 3)];
+        check(bounded(&[1, 2, 3], &[1, 2, 3], &map3, &[1, 2, 3], b"abcd")).unwrap();
+    }
+
+    #[test]
+    fn deserialize_unicode_sizing_counts_bytes() {
+        let sys = test_system();
+        let check = |text: &str| {
+            let data = bounded(&[1], &[1], &[(1, 1)], &[1], text.as_bytes());
+            sys.strict_deserialize_type("TestLib.Bounded", &data)
+        };
+        // the Rust type bounds the encoded length in bytes, not in characters
+        assert!(Confined::<String, 1, 4>::try_from("\u{e9}\u{e9}a".to_owned()).is_err());
+        // 2 characters, 4 bytes
+        check("\u{e9}\u{e9}").unwrap();
+        // 3 characters, 5 bytes
+        assert_rejected(check("\u{e9}\u{e9}a"), "has length 5, while the type requires 1..=4");
     }
 }

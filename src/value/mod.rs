@@ -76,6 +76,76 @@ mod test_helpers {
     impl StrictSerialize for Nominal {}
     impl StrictDeserialize for Nominal {}
 
+    #[derive(Clone, Eq, PartialEq, Debug, Default)]
+    #[derive(StrictDumb, StrictType, StrictEncode, StrictDecode)]
+    #[strict_type(lib = "TestLib")]
+    pub struct Attachments {
+        pub map: Confined<BTreeMap<u8, u8>, 0, 20>,
+    }
+
+    impl StrictSerialize for Attachments {}
+    impl StrictDeserialize for Attachments {}
+
+    // multi-byte unsigned key: exercises numeric (not little-endian) ordering
+    #[derive(Clone, Eq, PartialEq, Debug, Default)]
+    #[derive(StrictDumb, StrictType, StrictEncode, StrictDecode)]
+    #[strict_type(lib = "TestLib")]
+    pub struct U16Map {
+        pub map: Confined<BTreeMap<u16, u8>, 0, 20>,
+    }
+    impl StrictSerialize for U16Map {}
+    impl StrictDeserialize for U16Map {}
+
+    // signed key: exercises numeric ordering of negatives
+    #[derive(Clone, Eq, PartialEq, Debug, Default)]
+    #[derive(StrictDumb, StrictType, StrictEncode, StrictDecode)]
+    #[strict_type(lib = "TestLib")]
+    pub struct I8Map {
+        pub map: Confined<BTreeMap<i8, u8>, 0, 20>,
+    }
+    impl StrictSerialize for I8Map {}
+    impl StrictDeserialize for I8Map {}
+
+    // fixed byte-array key: exercises the `Bytes` ordering arm
+    #[derive(Clone, Eq, PartialEq, Debug, Default)]
+    #[derive(StrictDumb, StrictType, StrictEncode, StrictDecode)]
+    #[strict_type(lib = "TestLib")]
+    pub struct BytesMap {
+        pub map: Confined<BTreeMap<[u8; 2], u8>, 0, 20>,
+    }
+    impl StrictSerialize for BytesMap {}
+    impl StrictDeserialize for BytesMap {}
+
+    // set: exercises `check_ordered` over a set rather than a map
+    #[derive(Clone, Eq, PartialEq, Debug, Default)]
+    #[derive(StrictDumb, StrictType, StrictEncode, StrictDecode)]
+    #[strict_type(lib = "TestLib")]
+    pub struct U8Set {
+        pub set: Confined<BTreeSet<u8>, 0, 20>,
+    }
+    impl StrictSerialize for U8Set {}
+    impl StrictDeserialize for U8Set {}
+
+    // enum-keyed map: a disallowed key type, used to check the decoder-side backstop
+    #[derive(Clone, Eq, PartialEq, Debug, Default)]
+    #[derive(StrictDumb, StrictType, StrictEncode, StrictDecode)]
+    #[strict_type(lib = "TestLib")]
+    pub struct EnumMap {
+        pub map: Confined<BTreeMap<Precision, u8>, 0, 20>,
+    }
+    impl StrictSerialize for EnumMap {}
+    impl StrictDeserialize for EnumMap {}
+
+    // map keyed by a sequence of integers: exercises recursive (lexicographic) key ordering
+    #[derive(Clone, Eq, PartialEq, Debug, Default)]
+    #[derive(StrictDumb, StrictType, StrictEncode, StrictDecode)]
+    #[strict_type(lib = "TestLib")]
+    pub struct U16SeqMap {
+        pub map: Confined<BTreeMap<Confined<Vec<u16>, 0, 10>, u8>, 0, 20>,
+    }
+    impl StrictSerialize for U16SeqMap {}
+    impl StrictDeserialize for U16SeqMap {}
+
     impl Nominal {
         pub fn with(ticker: &'static str, name: &'static str, precision: u8) -> Self {
             Nominal {
@@ -120,6 +190,13 @@ mod test_helpers {
             LibBuilder::with("TestLib", [std.to_dependency_types(), st.to_dependency_types()])
                 .transpile::<Nominal>()
                 .transpile::<Bounded>()
+                .transpile::<Attachments>()
+                .transpile::<U16Map>()
+                .transpile::<I8Map>()
+                .transpile::<BytesMap>()
+                .transpile::<U8Set>()
+                .transpile::<EnumMap>()
+                .transpile::<U16SeqMap>()
                 .compile()
                 .unwrap();
         SystemBuilder::new()

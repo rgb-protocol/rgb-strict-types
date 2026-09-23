@@ -31,12 +31,13 @@ use std::ops::Index;
 use amplify::confinement::{self, Confined, MediumOrdMap};
 use amplify::num::u24;
 use encoding::{
-    DefaultBasedStrictDumb, LibName, Sizing, StrictDeserialize, StrictSerialize, TypeName,
+    DefaultBasedStrictDumb, LibName, NumCls, Primitive, Sizing, StrictDeserialize, StrictSerialize,
+    TypeName,
 };
 use strict_encoding::STRICT_TYPES_LIB;
 
 use crate::ast::UnnamedFields;
-use crate::{SemId, Ty};
+use crate::{SemId, Ty, TypeRef};
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Display, Error)]
 #[display("type with id `{0}` is not a part of the type system.")]
@@ -186,6 +187,35 @@ impl TypeSystem {
         Ok(self.get(first).ok_or(UnknownType(first))?.is_char_enum()
             && self.get(rest).ok_or(UnknownType(rest))?.is_char_enum())
     }
+
+    /// Whether a type is safe as a map key or set element.
+    ///
+    /// The canonical order of a collection is its key/element type's `Ord`, whose logic is not
+    /// carried by `Ty` and thus can't be validated from the TypeSystem alone. So it is only safe to
+    /// use types whose `Ord` logic can't be overridden:
+    /// - integer primitives (numeric `Ord`), `Byte` and `Unit`;
+    /// - an array or list (ordered lexicographically) whose element is one of the above, including
+    ///   byte strings.
+    pub fn is_valid_collection_key(&self, sem_id: SemId) -> bool {
+        let Some(ty) = self.get(sem_id) else {
+            return false;
+        };
+        match ty {
+            Ty::Primitive(prim) => Self::is_orderable_primitive(prim),
+            Ty::Array(el, _) | Ty::List(el, _) => {
+                el.is_byte()
+                    || matches!(self.get(*el), Some(Ty::Primitive(p)) if Self::is_orderable_primitive(p))
+            }
+            _ => false,
+        }
+    }
+
+    /// Integer primitives (numeric `Ord`), `Byte` and `Unit`.
+    fn is_orderable_primitive(prim: &Primitive) -> bool {
+        *prim == Primitive::UNIT
+            || *prim == Primitive::BYTE
+            || matches!(prim.info().ty, NumCls::Unsigned | NumCls::Signed | NumCls::NonZero)
+    }
 }
 
 impl Index<SemId> for TypeSystem {
@@ -215,4 +245,58 @@ impl armor::StrictArmor for TypeSystem {
     const PLATE_TITLE: &'static str = "STRICT TYPE SYSTEM";
 
     fn armor_id(&self) -> Self::Id { self.id() }
+}
+
+#[cfg(test)]
+mod test {
+    use encoding::Primitive;
+
+    use super::*;
+    use crate::ast::UnnamedFields;
+
+    #[test]
+    fn is_valid_collection_key_classification() {
+        // real byte/u8 and u16 sem ids, used as collection element refs
+        let u8_id = Ty::<SemId>::U8.sem_id_unnamed();
+        let u16_id = Ty::<SemId>::U16.sem_id_unnamed();
+        let byte_list_id = SemId::from([6u8; 32]);
+
+        // (sem id to register under, type, whether it may key a collection / be a set element)
+        let cases: Vec<(SemId, Ty<SemId>, bool)> = vec![
+            (SemId::from([1u8; 32]), Ty::U8, true),
+            (SemId::from([2u8; 32]), Ty::Primitive(Primitive::I64), true),
+            (SemId::from([3u8; 32]), Ty::BYTE, true),
+            (SemId::from([4u8; 32]), Ty::UNIT, true),
+            (SemId::from([5u8; 32]), Ty::Array(u8_id, 4), true), // byte array
+            (byte_list_id, Ty::list(u8_id, Sizing::U16), true),  // byte string / list of bytes
+            (SemId::from([7u8; 32]), Ty::Array(u16_id, 4), true), // array of integers
+            (SemId::from([8u8; 32]), Ty::list(u16_id, Sizing::U16), true), // list of integers
+            // rejected: a sequence of sequences (element check is one level deep)
+            (SemId::from([9u8; 32]), Ty::list(byte_list_id, Sizing::U16), false),
+            // rejected: a float has only a partial `Ord`
+            (SemId::from([10u8; 32]), Ty::Primitive(Primitive::F64), false),
+            // rejected: a nested map/set as a key/element
+            (SemId::from([11u8; 32]), Ty::map(u8_id, u8_id, Sizing::U16), false),
+            (SemId::from([12u8; 32]), Ty::set(u8_id, Sizing::U16), false),
+            // rejected: user-defined types whose `Ord` can be hand-written (enum, and the tuple /
+            // struct shape a newtype or tuple-struct transpiles to)
+            (SemId::from([13u8; 32]), Ty::enumerate(variants!("a", "b")), false),
+            (
+                SemId::from([14u8; 32]),
+                Ty::tuple(UnnamedFields::try_from(vec![u8_id]).unwrap()),
+                false,
+            ),
+        ];
+
+        let mut map: BTreeMap<SemId, Ty<SemId>> =
+            cases.iter().map(|(id, ty, _)| (*id, ty.clone())).collect();
+        // register the element primitives so the element lookup can resolve them
+        map.insert(u8_id, Ty::U8);
+        map.insert(u16_id, Ty::U16);
+        let types = TypeSystem::from(MediumOrdMap::from_checked(map));
+
+        for (id, ty, expected) in &cases {
+            assert_eq!(types.is_valid_collection_key(*id), *expected, "{ty:?}");
+        }
+    }
 }

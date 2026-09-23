@@ -23,6 +23,8 @@
 
 //! Reification module: reads & writes strict values from binary strict encodings.
 
+use std::cmp::Ordering;
+
 use amplify::ascii::AsciiString;
 use amplify::confinement::{
     Confined, LargeAscii, LargeBlob, LargeString, MediumAscii, MediumBlob, MediumString,
@@ -35,7 +37,7 @@ use indexmap::IndexMap;
 
 use crate::typesys::{SymbolicSys, TypeSymbol, UnknownType};
 use crate::typify::{TypeSpec, TypedVal};
-use crate::value::Blob;
+use crate::value::{Blob, StrictNum};
 use crate::{SemId, StrictVal, Ty, TypeRef, TypeSystem};
 
 #[derive(Clone, Eq, PartialEq, Debug, Display, Error, From)]
@@ -447,6 +449,16 @@ impl TypeSystem {
             .into());
         }
 
+        match (ty, val) {
+            (Ty::Map(key_id, _, _), StrictVal::Map(items)) => {
+                self.check_ordered(*key_id, items.iter().map(|(key, _)| key), spec)?
+            }
+            (Ty::Set(el, _), StrictVal::Set(items)) => {
+                self.check_ordered(*el, items.iter(), spec)?
+            }
+            _ => {}
+        }
+
         if let (Some((first, rest)), StrictVal::String(s)) = (charset, val) {
             let (first_set, rest_set) = (self.char_set(first)?, self.char_set(rest)?);
             for (pos, ch) in s.bytes().enumerate() {
@@ -461,6 +473,71 @@ impl TypeSystem {
             }
         }
         Ok(())
+    }
+
+    /// Checks that set elements or map keys are strictly ascending, the way the canonical
+    /// `BTreeSet`/`BTreeMap` decoders require.
+    fn check_ordered<'a>(
+        &self,
+        sem_id: SemId,
+        items: impl IntoIterator<Item = &'a StrictVal>,
+        spec: &TypeSpec,
+    ) -> Result<(), Error> {
+        if !self.is_valid_collection_key(sem_id) {
+            return Err(DecodeError::DataIntegrityError(format!(
+                "type {} cannot be used as a collection key or set element",
+                TypeSpec::from(sem_id)
+            ))
+            .into());
+        }
+        let mut prev: Option<&StrictVal> = None;
+        for (pos, item) in items.into_iter().enumerate() {
+            if let Some(prev) = prev {
+                if prev == item {
+                    return Err(DecodeError::DataIntegrityError(format!(
+                        "value of type {spec} repeats the item at position {pos}"
+                    ))
+                    .into());
+                }
+                if Self::cmp_vals(prev, item)? == Ordering::Greater {
+                    return Err(DecodeError::DataIntegrityError(format!(
+                        "value of type {spec} is not ordered at position {pos}"
+                    ))
+                    .into());
+                }
+            }
+            prev = Some(item);
+        }
+        Ok(())
+    }
+
+    /// Orders two values of a valid key type according to their native ordering.
+    fn cmp_vals(a: &StrictVal, b: &StrictVal) -> Result<Ordering, Error> {
+        let mismatch = || -> Error {
+            DecodeError::DataIntegrityError(
+                "unexpected value shape while ordering a collection key".to_string(),
+            )
+            .into()
+        };
+        Ok(match (a, b) {
+            (StrictVal::Unit, StrictVal::Unit) => Ordering::Equal,
+            (StrictVal::Number(a), StrictVal::Number(b)) => match (a, b) {
+                (StrictNum::Uint(a), StrictNum::Uint(b)) => a.cmp(b),
+                (StrictNum::Int(a), StrictNum::Int(b)) => a.cmp(b),
+                _ => return Err(mismatch()),
+            },
+            (StrictVal::Bytes(a), StrictVal::Bytes(b)) => a.as_slice().cmp(b.as_slice()),
+            (StrictVal::List(a), StrictVal::List(b)) => {
+                for (x, y) in a.iter().zip(b) {
+                    match Self::cmp_vals(x, y)? {
+                        Ordering::Equal => {}
+                        ord => return Ok(ord),
+                    }
+                }
+                a.len().cmp(&b.len())
+            }
+            _ => return Err(mismatch()),
+        })
     }
 
     /// Returns the characters allowed by a character enum type.
@@ -569,6 +646,159 @@ mod test {
             "has length 101, while the type requires 1..=100",
         );
         sys.strict_deserialize_type("TestLib.Nominal", &nominal(&[b'A'; 100], b"name")).unwrap();
+    }
+
+    /// Strict encoding of `Attachments`: a u8 length followed by that many key/value byte pairs.
+    fn attachments(pairs: &[(u8, u8)]) -> Vec<u8> {
+        let mut data = vec![pairs.len() as u8];
+        for (key, val) in pairs {
+            data.push(*key);
+            data.push(*val);
+        }
+        data
+    }
+
+    #[test]
+    fn deserialize_map_requires_ascending_keys() {
+        let sys = test_system();
+        sys.strict_deserialize_type("TestLib.Attachments", &attachments(&[(1, 10), (2, 20)]))
+            .unwrap();
+        // a duplicate key: the canonical BTreeMap decoder returns RepeatedMapValue
+        assert!(sys
+            .strict_deserialize_type("TestLib.Attachments", &attachments(&[(1, 10), (1, 20)]))
+            .is_err());
+        // descending keys: the canonical decoder returns BrokenMapOrder
+        assert!(sys
+            .strict_deserialize_type("TestLib.Attachments", &attachments(&[(2, 20), (1, 10)]))
+            .is_err());
+        // ordering is numeric, not over the little-endian encoding
+        sys.strict_deserialize_type("TestLib.Attachments", &attachments(&[(1, 0), (255, 0)]))
+            .unwrap();
+    }
+
+    /// Strict encoding of a `BTreeMap<u16, u8>`: a u8 length, then little-endian key / value pairs.
+    fn u16_map(pairs: &[(u16, u8)]) -> Vec<u8> {
+        let mut data = vec![pairs.len() as u8];
+        for (k, v) in pairs {
+            data.extend_from_slice(&k.to_le_bytes());
+            data.push(*v);
+        }
+        data
+    }
+
+    #[test]
+    fn deserialize_map_multibyte_key_numeric_order() {
+        let sys = test_system();
+        // keys are ordered numerically, according to big-endian encoding
+        sys.strict_deserialize_type("TestLib.U16Map", &u16_map(&[(1, 0), (256, 0)])).unwrap();
+        assert!(sys
+            .strict_deserialize_type("TestLib.U16Map", &u16_map(&[(256, 0), (1, 0)]))
+            .is_err());
+    }
+
+    /// Strict encoding of a `BTreeMap<i8, u8>`.
+    fn i8_map(pairs: &[(i8, u8)]) -> Vec<u8> {
+        let mut data = vec![pairs.len() as u8];
+        for (k, v) in pairs {
+            data.push(*k as u8);
+            data.push(*v);
+        }
+        data
+    }
+
+    #[test]
+    fn deserialize_map_signed_key_numeric_order() {
+        let sys = test_system();
+        // -1 (encoded `ff`) is numerically below 1 (`01`), though `ff` > `01` as a byte
+        sys.strict_deserialize_type("TestLib.I8Map", &i8_map(&[(-1, 0), (1, 0)])).unwrap();
+        assert!(sys.strict_deserialize_type("TestLib.I8Map", &i8_map(&[(1, 0), (-1, 0)])).is_err());
+    }
+
+    /// Strict encoding of a `BTreeMap<[u8; 2], u8>`: fixed-size keys carry no length prefix.
+    fn bytes_map(pairs: &[([u8; 2], u8)]) -> Vec<u8> {
+        let mut data = vec![pairs.len() as u8];
+        for (k, v) in pairs {
+            data.extend_from_slice(k);
+            data.push(*v);
+        }
+        data
+    }
+
+    #[test]
+    fn deserialize_bytes_keyed_map() {
+        let sys = test_system();
+        // ascending lexicographic byte order
+        sys.strict_deserialize_type("TestLib.BytesMap", &bytes_map(&[([0, 1], 0), ([1, 0], 0)]))
+            .unwrap();
+        // descending
+        assert!(sys
+            .strict_deserialize_type("TestLib.BytesMap", &bytes_map(&[([1, 0], 0), ([0, 1], 0)]))
+            .is_err());
+        // duplicate
+        assert!(sys
+            .strict_deserialize_type("TestLib.BytesMap", &bytes_map(&[([0, 1], 0), ([0, 1], 0)]))
+            .is_err());
+    }
+
+    /// Strict encoding of a `BTreeSet<u8>`: a u8 length, then the elements.
+    fn u8_set(elems: &[u8]) -> Vec<u8> {
+        let mut data = vec![elems.len() as u8];
+        data.extend_from_slice(elems);
+        data
+    }
+
+    #[test]
+    fn deserialize_set_requires_ascending() {
+        let sys = test_system();
+        sys.strict_deserialize_type("TestLib.U8Set", &u8_set(&[1, 2])).unwrap();
+        // descending
+        assert!(sys.strict_deserialize_type("TestLib.U8Set", &u8_set(&[2, 1])).is_err());
+        // duplicate
+        assert!(sys.strict_deserialize_type("TestLib.U8Set", &u8_set(&[1, 1])).is_err());
+    }
+
+    /// Strict encoding of a `BTreeMap<Confined<Vec<u16>>, u8>`: a u8 map length, then per entry a
+    /// u8 sequence length, that many little-endian `u16`s, and the `u8` value.
+    fn u16_seq_map(pairs: &[(&[u16], u8)]) -> Vec<u8> {
+        let mut data = vec![pairs.len() as u8];
+        for (seq, v) in pairs {
+            data.push(seq.len() as u8);
+            for e in *seq {
+                data.extend_from_slice(&e.to_le_bytes());
+            }
+            data.push(*v);
+        }
+        data
+    }
+
+    #[test]
+    fn deserialize_seq_keyed_map() {
+        let sys = test_system();
+        // lists are ordered lexicographically over their (numeric) elements
+        sys.strict_deserialize_type("TestLib.U16SeqMap", &u16_seq_map(&[(&[1], 0), (&[2], 0)]))
+            .unwrap();
+        // a shorter list orders before a longer one it prefixes
+        sys.strict_deserialize_type("TestLib.U16SeqMap", &u16_seq_map(&[(&[1], 0), (&[1, 2], 0)]))
+            .unwrap();
+        // descending
+        assert!(sys
+            .strict_deserialize_type("TestLib.U16SeqMap", &u16_seq_map(&[(&[2], 0), (&[1], 0)]))
+            .is_err());
+        // duplicate
+        assert!(sys
+            .strict_deserialize_type("TestLib.U16SeqMap", &u16_seq_map(&[(&[1], 0), (&[1], 0)]))
+            .is_err());
+    }
+
+    #[test]
+    fn deserialize_rejects_disallowed_key_type() {
+        let sys = test_system();
+        // `EnumMap` keys a map by `Precision`, which is not a valid collection key.
+        assert!(sys.strict_deserialize_type("TestLib.EnumMap", &attachments(&[])).is_err());
+        assert!(sys.strict_deserialize_type("TestLib.EnumMap", &attachments(&[(0, 0)])).is_err());
+        assert!(sys
+            .strict_deserialize_type("TestLib.EnumMap", &attachments(&[(0, 0), (1, 0)]))
+            .is_err());
     }
 
     #[test]

@@ -70,3 +70,7 @@ serde = [
 
 [package.metadata.docs.rs]
 all-features = true
+
+[patch.crates-io]
+rgb-strict-encoding = { git = "https://github.com/rgb-protocol/rgb-strict-encoding", rev = "1598d8c" }
+rgb-ascii-armor = { git = "https://github.com/rgb-protocol/rgb-ascii-armor", rev = "a9bd205" }

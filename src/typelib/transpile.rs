@@ -36,7 +36,7 @@ use strict_encoding::{
 };
 
 use crate::ast::{EnumVariants, Field, NamedFields, UnionVariants, UnnamedFields};
-use crate::{Dependency, SemId, SymbolRef, TranspileRef, Ty, TypeLibId};
+use crate::{Dependency, SemId, SymbolRef, TranspileRef, Ty, TypeLibId, TypeRef};
 
 const MAX_WRITE_COUNT: usize = U64MAX;
 
@@ -170,6 +170,11 @@ impl TypedWrite for LibBuilder {
         self
     }
 
+    unsafe fn register_unicode_char(mut self) -> Self {
+        self.last_compiled = Some(Ty::UnicodeChar.into());
+        self
+    }
+
     unsafe fn register_rstring(
         mut self,
         c: &impl StrictEncode,
@@ -191,6 +196,12 @@ impl TypedWrite for LibBuilder {
     unsafe fn register_list(mut self, ty: &impl StrictEncode, sizing: Sizing) -> Self {
         self = ty.strict_encode(self).expect("in-memory encoding");
         let ty = self.last_compiled.expect("can't compile type");
+        // `[Unicode]` is the type of a Unicode string, whose length prefix counts bytes, not
+        // characters: a list of characters needs a named element type
+        assert!(
+            !ty.is_unicode_char(),
+            "a list of bare Unicode characters is a string; wrap the character in a named type"
+        );
         self.last_compiled = Some(Ty::List(ty, sizing).into());
         self
     }

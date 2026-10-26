@@ -160,9 +160,7 @@ impl TypeSystem {
                     }
                 }
             }
-            Ty::UnicodeChar => {
-                todo!()
-            }
+            Ty::UnicodeChar => StrictVal::String(char::strict_decode(&mut reader)?.to_string()),
 
             // ASCII strings:
             Ty::List(sem_id, sizing)
@@ -894,5 +892,38 @@ mod test {
         check("\u{e9}\u{e9}").unwrap();
         // 3 characters, 5 bytes
         assert_rejected(check("\u{e9}\u{e9}a"), "has length 5, while the type requires 1..=4");
+    }
+
+    #[test]
+    fn unicode_char_reify() {
+        use std::collections::BTreeMap;
+
+        use amplify::confinement::Confined;
+        use amplify::Wrapper;
+
+        use crate::{SemId, StrictVal, Ty, TypeSystem};
+
+        let unicode_id = Ty::<SemId>::UNICODE.sem_id_unnamed();
+        let mut map = BTreeMap::new();
+        map.insert(unicode_id, Ty::<SemId>::UNICODE);
+        let sys = TypeSystem::from_inner(Confined::try_from(map).unwrap());
+
+        // A UnicodeChar is on the wire as the raw UTF-8 of one scalar. Valid
+        // 1/2/3/4-byte chars must round-trip to the same string.
+        for c in ['A', 'Ω', '€', '😀'] {
+            let bytes = c.to_string().into_bytes();
+            let val = sys
+                .strict_deserialize_type(unicode_id, &bytes)
+                .unwrap_or_else(|e| panic!("reifying {c:?} failed: {e}"));
+            assert_eq!(val.val, StrictVal::String(c.to_string()));
+        }
+
+        // Malformed input must be a graceful error, never a panic or misparse.
+        assert!(sys.strict_deserialize_type(unicode_id, &[0xAA]).is_err()); // bad lead byte
+        assert!(sys.strict_deserialize_type(unicode_id, &[0xF0, 0x9F]).is_err()); // truncated
+        assert!(sys.strict_deserialize_type(unicode_id, &[0xC0, 0x00]).is_err()); // bad continuation
+
+        // A valid char followed by trailing bytes must not be silently accepted.
+        assert!(sys.strict_deserialize_type(unicode_id, b"AB").is_err());
     }
 }
